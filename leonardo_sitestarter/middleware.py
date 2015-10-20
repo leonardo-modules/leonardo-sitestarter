@@ -20,7 +20,7 @@ class QuickStartMiddleware(object):
     """
 
     def __init__(self, *args, **kwargs):
-        if not settings.DEBUG or Page.objects.count() > 0:
+        if not settings.DEBUG and Page.objects.count() > 0:
             raise MiddlewareNotUsed
 
     def process_response(self, request, response):
