@@ -39,7 +39,7 @@ class QuickStartMiddleware(object):
 
             page = create_new_site(request=request,
                                    url=url,
-                                   run_syncall=True)
+                                   run_syncall=False)
 
             return HttpResponseRedirect(reverse('page_update',
                                                 kwargs={'page_id': page.pk}))
