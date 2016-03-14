@@ -116,10 +116,10 @@ def create_new_site(run_syncall=False, with_user=True, request=None,
         management.call_command('sync_all', force=True)
 
     if url:
-        try:
-            BOOTSTRAP = _load_from_stream(requests.get(url).text)
-        except Exception as e:
-            raise e
+        response = requests.get(url)
+        if response.status_code == 404:
+            raise requests.exceptions.HTTPError(url + ' not found')
+        BOOTSTRAP = _load_from_stream(response.text)
     else:
         try:
             scripts = get_loaded_scripts()
