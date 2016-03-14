@@ -12,7 +12,7 @@ class Command(BaseCommand):
     option_list = NoArgsCommand.option_list + (
         make_option("-f", "--force",
                     action="store_true", dest="force", default=False,
-                    help="overwrite existing database templates"),
+                    help="Flush db if is already bootstraped"),
         make_option("-n", "--name",
                     action="store", dest="name", default='demo.yaml',
                     help="script name in LEONARDO_BOOTSTRAP_DIR default is demo.yaml"),
@@ -34,6 +34,8 @@ class Command(BaseCommand):
         url = options.get('url', None)
         page = create_new_site(name=name,
                                run_syncall=sync,
-                               url=url)
+                               url=url,
+                               force=force)
 
-        self.stdout.write('Site {} was successfully loaded.'.format(url or name))
+        self.stdout.write(
+            'Site {} was successfully loaded.'.format(url or name))

@@ -1,6 +1,33 @@
 CHANGES
 =======
 
+* Allow flush db
+
+1.0.0a5
+-------
+
+* Handle not found
+
+1.0.0a4
+-------
+
+* Do not run sync_all and readme update
+
+1.0.0a3
+-------
+
+* update readme and fix kicking
+
+1.0.0a2
+-------
+
+* fix import
+
+1.0.0a1
+-------
+
+* cleanup
+
 1.0.0a0
 -------
 

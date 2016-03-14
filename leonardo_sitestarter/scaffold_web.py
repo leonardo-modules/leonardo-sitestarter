@@ -7,8 +7,8 @@ import six
 from django.conf import settings
 from django.contrib.auth import authenticate, login
 from django.contrib.auth.models import User
+from django.core import management
 from horizon_contrib.common import get_class
-
 from leonardo.models import (Page, PageColorScheme, PageTheme, WidgetBaseTheme,
                              WidgetContentTheme, WidgetDimension)
 
@@ -104,15 +104,21 @@ def _handle_regions(regions, feincms_object):
 
 
 def create_new_site(run_syncall=False, with_user=True, request=None,
-                    name='demo.yaml', url=None):
+                    name='demo.yaml', url=None, force=False):
     """load all available scripts and try scaffold new site from them
 
     TODO(majklk): refactor and support for more cases
 
     """
 
+    if Page.objects.exists() and not force:
+        raise Exception('There is some page, '
+                        'this means site was already bootstraped.'
+                        ' If you want bootstrap again use force=True')
+    else:
+        management.call_command('flush', interactive=False)
+
     if run_syncall:
-        from django.core import management
         management.call_command('sync_all', force=True)
 
     if url:
