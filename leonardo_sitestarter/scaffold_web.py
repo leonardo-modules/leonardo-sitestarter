@@ -93,7 +93,7 @@ def _handle_regions(regions, feincms_object):
             widget.save(created=False)
 
             for size, width in six.iteritems(
-                    widget_attrs.get('dimenssions', {})):
+                    widget_attrs.get('dimensions', {})):
 
                 WidgetDimension(**{
                     'widget_id': widget.pk,
