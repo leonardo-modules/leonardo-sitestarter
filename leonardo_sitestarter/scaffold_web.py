@@ -111,11 +111,7 @@ def create_new_site(run_syncall=False, with_user=True, request=None,
 
     """
 
-    if Page.objects.exists() and not force:
-        raise Exception('There is some page, '
-                        'this means site was already bootstraped.'
-                        ' If you want bootstrap again use force=True')
-    else:
+    if force:
         management.call_command('flush', interactive=False)
 
     if run_syncall:
