@@ -60,3 +60,23 @@ def _load_from_stream(stream):
     if not result:
         raise Exception('cannot load the stream %s' % stream)
     return result
+
+
+def _get_item(model, value, identifier=None):
+    '''returns item or raise exception
+    support value=first,last
+    '''
+
+    try:
+
+        if value == "__first__":
+            return model.objects.first()
+        if value == "__last__":
+            return model.objects.last()
+
+        if str(value).isdigit() and not identifier:
+            identifier = 'id'
+        return model.objects.get(**{identifier: value})
+
+    except model.DoesNotExist:
+        raise Exception('The %s %s:%s not found.' % (model, identifier, value))

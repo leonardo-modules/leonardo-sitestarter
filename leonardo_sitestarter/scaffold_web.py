@@ -12,7 +12,7 @@ from horizon_contrib.common import get_class
 from leonardo.models import (Page, PageColorScheme, PageTheme, WidgetBaseTheme,
                              WidgetContentTheme, WidgetDimension)
 
-from .utils import _load_from_stream
+from .utils import _load_from_stream, _get_item
 
 LOG = logging.getLogger('leonardo')
 
@@ -72,8 +72,12 @@ def _handle_regions(regions, feincms_object):
             w_attrs['content_theme'] = WidgetContentTheme.objects.get(
                 name=w_attrs.get('content_theme', 'default'),
                 widget_class=WidgetCls.__name__)
-            w_attrs['base_theme'] = WidgetBaseTheme.objects.get(
-                name=w_attrs.get('base_theme', 'default'))
+
+            w_attrs['base_theme'] = _get_item(
+                WidgetBaseTheme,
+                w_attrs.get('base_theme', 'default'),
+                "name")
+
             widget = WidgetCls(**w_attrs)
             widget.save(created=False)
 
@@ -88,27 +92,6 @@ def _handle_regions(regions, feincms_object):
                 }).save()
 
             i += 1
-
-
-def _get_item(model, value, identifier=None):
-    '''returns item or raise exception
-    support value=first,last
-    '''
-
-    try:
-
-        if value == "__first__":
-            return model.objects.first()
-        if value == "__last__":
-            return model.objects.last()
-
-        if identifier:
-            if str(value).isdigit() and not identifier:
-                identifier = 'id'
-            return model.objects.get(**{identifier: value})
-
-    except model.DoesNotExist:
-        raise Exception('The %s %s:%s not found' % (model, identifier, value))
 
 
 def create_new_site(run_syncall=False, request=None,
