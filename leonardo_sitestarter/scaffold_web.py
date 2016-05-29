@@ -12,28 +12,12 @@ from horizon_contrib.common import get_class
 from leonardo.models import (Page, PageColorScheme, PageTheme, WidgetBaseTheme,
                              WidgetContentTheme, WidgetDimension)
 
+from .utils import _load_from_stream
+
 LOG = logging.getLogger('leonardo')
 
 LEONARDO_BOOTSTRAP_DIR = getattr(settings, 'LEONARDO_BOOTSTRAP_DIR', None)
-
-
-def _load_from_stream(stream):
-    result = None
-    try:
-        import yaml
-        result = yaml.load(stream)
-    except:
-        pass
-    else:
-        return result
-    try:
-        import json
-        result = json.load(stream)
-    except:
-        pass
-    else:
-        return result
-    return result
+LEONARDO_FAIL_SILENTLY = getattr(settings, 'LEONARDO_FAIL_SILENTLY', False)
 
 
 def get_loaded_scripts(directory=LEONARDO_BOOTSTRAP_DIR):
@@ -68,6 +52,7 @@ def get_loaded_scripts(directory=LEONARDO_BOOTSTRAP_DIR):
 def _handle_regions(regions, feincms_object):
 
     for region, widgets in six.iteritems(regions):
+        i = 0
         for widget_cls, widget_attrs in six.iteritems(widgets):
 
             try:
@@ -81,14 +66,14 @@ def _handle_regions(regions, feincms_object):
             w_attrs.update({
                 'parent': feincms_object,
                 'region': region,
-                'ordering': 0
+                'ordering': w_attrs.get('ordering', i)
             })
 
             w_attrs['content_theme'] = WidgetContentTheme.objects.get(
-                name=w_attrs['content_theme'],
+                name=w_attrs.get('content_theme', 'default'),
                 widget_class=WidgetCls.__name__)
             w_attrs['base_theme'] = WidgetBaseTheme.objects.get(
-                name=w_attrs['base_theme'])
+                name=w_attrs.get('base_theme', 'default'))
             widget = WidgetCls(**w_attrs)
             widget.save(created=False)
 
@@ -102,8 +87,31 @@ def _handle_regions(regions, feincms_object):
                     'width': width
                 }).save()
 
+            i += 1
 
-def create_new_site(run_syncall=False, with_user=True, request=None,
+
+def _get_item(model, value, identifier=None):
+    '''returns item or raise exception
+    support value=first,last
+    '''
+
+    try:
+
+        if value == "__first__":
+            return model.objects.first()
+        if value == "__last__":
+            return model.objects.last()
+
+        if identifier:
+            if str(value).isdigit() and not identifier:
+                identifier = 'id'
+            return model.objects.get(**{identifier: value})
+
+    except model.DoesNotExist:
+        raise Exception('The %s %s:%s not found' % (model, identifier, value))
+
+
+def create_new_site(run_syncall=False, request=None,
                     name='demo.yaml', url=None, force=False):
     """load all available scripts and try scaffold new site from them
 
@@ -135,15 +143,14 @@ def create_new_site(run_syncall=False, with_user=True, request=None,
     for username, user_attrs in six.iteritems(BOOTSTRAP.pop('auth.User', {})):
 
         # create and login user
-        if with_user and not User.objects.exists():
-            User.objects.create_superuser(
-                username, user_attrs['mail'], user_attrs['password'])
+        User.objects.create_superuser(
+            username, user_attrs['mail'], user_attrs['password'])
 
-            # login
-            if request:
-                auth_user = authenticate(
-                    username=username, password=user_attrs['password'])
-                login(request, auth_user)
+        # login
+        if request:
+            auth_user = authenticate(
+                username=username, password=user_attrs['password'])
+            login(request, auth_user)
 
     for page_name, page_attrs in six.iteritems(BOOTSTRAP.pop('web.Page', {})):
 
@@ -154,35 +161,21 @@ def create_new_site(run_syncall=False, with_user=True, request=None,
 
         if not (PageTheme.objects.exists() or
                 PageColorScheme.objects.exists()):
-            raise Exception("You havent any themes \
-                please install someone and run sync_all")
-
-        try:
-            if page_theme_name == '__first__':
-                theme = PageTheme.objects.first()
-            else:
-                theme = PageTheme.objects.filter(name=page_theme_name).first()
-        except PageTheme.DoesNotExist:
             raise Exception(
-                "Page theme %s not found" % page_theme_name)
-        except Exception as e:
-            raise Exception(
-                "Page theme find more than one PageTheme for %s not found" % page_theme_name)
+                "You havent any themes please install someone and run sync_all")
 
-        else:
-            page_attrs['theme'] = theme
+        page_attrs['theme'] = _get_item(PageTheme, page_theme_name, "name")
 
-        try:
-            if page_color_scheme_name == '__first__':
-                color_scheme = PageColorScheme.objects.first()
+        page_attrs['color_scheme'] = _get_item(PageColorScheme,
+                                               page_color_scheme_name, "name")
+
+        parent = page_attrs.get('parent', None)
+
+        if parent:
+            if str(parent).isdigit():
+                page_attrs['parent'] = _get_item(Page, parent)
             else:
-                color_scheme = PageColorScheme.objects.filter(
-                    name__icontains=page_color_scheme_name).first()
-        except PageColorScheme.DoesNotExist:
-            raise Exception("Page Color Scheme %s "
-                            "not found" % page_color_scheme_name)
-        else:
-            page_attrs['color_scheme'] = color_scheme
+                page_attrs['parent'] = _get_item(Page, parent, "slug")
 
         page, created = Page.objects.get_or_create(**page_attrs)
 
@@ -207,8 +200,8 @@ def create_new_site(run_syncall=False, with_user=True, request=None,
                     cls_type = value.get('type', None)
                     if cls_type:
                         try:
-                            cls_attrs[attr] = get_class(
-                                cls_type).objects.get(pk=value.get('pk'))
+                            cls_attrs[attr] = _get_item(get_class(
+                                cls_type), value.get('pk'))
                         except Exception as e:
                             raise Exception(
                                 'Cannot load FK {} not Found original exception {}'.format(cls_type, e))
