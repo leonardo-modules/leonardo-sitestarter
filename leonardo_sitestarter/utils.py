@@ -1,7 +1,12 @@
 
+import sys
 import yaml
+import logging
 
 from collections import OrderedDict
+from django.utils import six
+
+LOG = logging.getLogger('leonardo')
 
 
 class Loader(yaml.Loader):
@@ -80,3 +85,19 @@ def _get_item(model, value, identifier=None):
 
     except model.DoesNotExist:
         raise Exception('The %s %s:%s not found.' % (model, identifier, value))
+
+
+def get_or_create(model, fail_silently=True, *args, **kwargs):
+
+    try:
+        instance, created = model.objects.get_or_create(*args, **kwargs)
+    except Exception as e:
+        if not fail_silently:
+            exc_info = sys.exc_info()
+            raise six.reraise(*exc_info)
+        else:
+            LOG.exception(e)
+    else:
+        return instance, created
+
+    return None, False

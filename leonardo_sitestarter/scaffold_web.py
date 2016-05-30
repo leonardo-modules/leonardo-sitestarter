@@ -4,6 +4,7 @@ import os
 
 import requests
 import six
+from collections import OrderedDict
 from django.conf import settings
 from django.contrib.auth import authenticate, login
 from django.contrib.auth.models import User
@@ -12,7 +13,7 @@ from horizon_contrib.common import get_class
 from leonardo.models import (Page, PageColorScheme, PageTheme, WidgetBaseTheme,
                              WidgetContentTheme, WidgetDimension)
 
-from .utils import _load_from_stream, _get_item
+from .utils import _load_from_stream, _get_item, get_or_create
 
 LOG = logging.getLogger('leonardo')
 
@@ -49,7 +50,11 @@ def get_loaded_scripts(directory=LEONARDO_BOOTSTRAP_DIR):
     return scripts
 
 
-def _handle_regions(regions, feincms_object):
+def _handle_regions(regions, feincms_object, fail_silently=False):
+
+    if not feincms_object:
+        LOG.warning('Skipped {}' % regions.items())
+        return None
 
     for region, widgets in six.iteritems(regions):
         i = 0
@@ -58,8 +63,9 @@ def _handle_regions(regions, feincms_object):
             try:
                 WidgetCls = get_class(widget_cls)
             except Exception as e:
-                raise Exception('Cannout load {} with {}'.format(
-                    widget_cls, e))
+                if not fail_silently:
+                    raise Exception('Cannout load {} with {}'.format(
+                        widget_cls, e))
 
             # TODO create form and validate options
             w_attrs = widget_attrs.get('attrs', {})
@@ -78,20 +84,27 @@ def _handle_regions(regions, feincms_object):
                 w_attrs.get('base_theme', 'default'),
                 "name")
 
-            widget = WidgetCls(**w_attrs)
-            widget.save(created=False)
+            try:
+                widget = WidgetCls(**w_attrs)
+                widget.save(created=False)
+            except Exception as e:
+                if not fail_silently:
+                    raise e
+                else:
+                    LOG.exception(e)
 
-            for size, width in six.iteritems(
-                    widget_attrs.get('dimensions', {})):
+            else:
+                for size, width in six.iteritems(
+                        widget_attrs.get('dimensions', {})):
 
-                WidgetDimension(**{
-                    'widget_id': widget.pk,
-                    'widget_type': widget.content_type,
-                    'size': size,
-                    'width': width
-                }).save()
+                    WidgetDimension(**{
+                        'widget_id': widget.pk,
+                        'widget_type': widget.content_type,
+                        'size': size,
+                        'width': width
+                    }).save()
 
-            i += 1
+                i += 1
 
 
 def create_new_site(run_syncall=False, request=None,
@@ -121,21 +134,30 @@ def create_new_site(run_syncall=False, request=None,
             raise Exception('Cannot find {} in {} loaded from {}'.format(
                 name, scripts, LEONARDO_BOOTSTRAP_DIR))
 
+    return load_data(BOOTSTRAP)
+
+
+def load_data(data, fail_silently=True):
+
     root_page = None
 
-    for username, user_attrs in six.iteritems(BOOTSTRAP.pop('auth.User', {})):
+    for username, user_attrs in six.iteritems(data.pop('auth.User', {})):
 
-        # create and login user
-        User.objects.create_superuser(
-            username, user_attrs['mail'], user_attrs['password'])
+        if not User.objects.filter(
+                username=username,
+                email=user_attrs['mail']).exists():
 
-        # login
-        if request:
-            auth_user = authenticate(
-                username=username, password=user_attrs['password'])
-            login(request, auth_user)
+            try:
+                # create and login user
+                User.objects.create_superuser(
+                    username, user_attrs['mail'], user_attrs['password'])
+            except Exception as e:
+                if not fail_silently:
+                    raise e
+                else:
+                    LOG.exception(e)
 
-    for page_name, page_attrs in six.iteritems(BOOTSTRAP.pop('web.Page', {})):
+    for page_name, page_attrs in six.iteritems(data.pop('web.Page', {})):
 
         page_theme_name = page_attrs.pop('theme', '__first__')
         page_color_scheme_name = page_attrs.pop('color_scheme', '__first__')
@@ -160,15 +182,15 @@ def create_new_site(run_syncall=False, request=None,
             else:
                 page_attrs['parent'] = _get_item(Page, parent, "slug")
 
-        page, created = Page.objects.get_or_create(**page_attrs)
+        page, created = get_or_create(Page, fail_silently, **page_attrs)
 
         # TODO from attrs etc..
         root_page = page
 
-        _handle_regions(regions, page)
+        _handle_regions(regions, page, fail_silently)
 
     # generic stuff
-    for cls_name, entries in six.iteritems(BOOTSTRAP):
+    for cls_name, entries in six.iteritems(data):
 
         for entry, cls_attrs in six.iteritems(entries):
 
@@ -179,18 +201,19 @@ def create_new_site(run_syncall=False, request=None,
             # load FK from
             # author: {'pk': 1, 'type': 'auth.User'}
             for attr, value in six.iteritems(cls_attrs):
-                if isinstance(value, dict):
+                if isinstance(value, (dict, OrderedDict)):
                     cls_type = value.get('type', None)
                     if cls_type:
                         try:
                             cls_attrs[attr] = _get_item(get_class(
                                 cls_type), value.get('pk'))
                         except Exception as e:
-                            raise Exception(
-                                'Cannot load FK {} not Found original exception {}'.format(cls_type, e))
+                            if not fail_silently:
+                                raise Exception(
+                                    'Cannot load FK {} not Found original exception {}'.format(cls_type, e))
 
-            instance, created = cls.objects.get_or_create(**cls_attrs)
+            instance, created = get_or_create(cls, fail_silently, **cls_attrs)
 
-            _handle_regions(regions, instance)
+            _handle_regions(regions, instance, fail_silently)
 
     return root_page

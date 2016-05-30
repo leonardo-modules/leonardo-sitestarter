@@ -68,6 +68,13 @@ Bootstraping site is kicked of by middleware in default state, but if you want b
 
     python manage.py bootstrap_site --url=https://raw.githubusercontent.com/django-leonardo/django-leonardo/master/contrib/bootstrap/blog.yaml
 
+load demo data::
+
+    python manage.py load_demo_data
+
+    python manage.py bootstrap_site demo.yaml --demo
+
+This paths are collected from ``demo`` folders under leonardo modules. For exmaple see leonardo blog. 
 
 Read More
 =========
